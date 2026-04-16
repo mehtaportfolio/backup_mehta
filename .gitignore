@@ -1,0 +1,25 @@
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+temp/
+tmp/
+
+# Sensitive credentials
+credentials.json
+service-account.json
+token.json
+
+# Project specific data files
+last-run-*.json
+
+# OS files
+.DS_Store
+Thumbs.db
