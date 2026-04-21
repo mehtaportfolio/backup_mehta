@@ -70,7 +70,7 @@ const projects = [
       port: process.env.DB_PORT_PF
     },
     driveFolder: process.env.DRIVE_FOLDER_ID_PF,
-    lastRunFile: "./last-run-pf.json"
+    lastRunFile: path.join(process.cwd(), "last-run-pf.json")
   },
  
 {
@@ -83,7 +83,7 @@ const projects = [
       port: process.env.DB_PORT_DATA
     },
     driveFolder: process.env.DRIVE_FOLDER_ID_DATA,
-    lastRunFile: "./last-run-data.json"
+    lastRunFile: path.join(process.cwd(), "last-run-data.json")
   },
  
 {
@@ -96,7 +96,7 @@ const projects = [
       port: process.env.DB_PORT_EXP
     },
     driveFolder: process.env.DRIVE_FOLDER_ID_EXP,
-    lastRunFile: "./last-run-exp.json"
+    lastRunFile: path.join(process.cwd(), "last-run-exp.json")
   }
 
   // ADD MORE PROJECTS HERE
@@ -196,29 +196,51 @@ log(`Uploaded: ${projectName}`);
 // DELETE OLD BACKUPS (KEEP 3)
 // ----------------------------
 async function deleteOldBackups(folderId) {
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents and mimeType='application/zip' and trashed=false`,
-    fields: "files(id,name,createdTime)",
-    orderBy: "createdTime desc"
-  });
+  try {
+    // Get folder name for verification
+    const folderMetadata = await drive.files.get({
+      fileId: folderId,
+      fields: "name"
+    });
+    const folderName = folderMetadata.data.name;
 
-  const files = res.data.files || [];
-  const KEEP_LAST = 3;
+    const res = await drive.files.list({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: "nextPageToken, files(id,name,createdTime,mimeType)",
+      orderBy: "createdTime desc",
+      pageSize: 1000
+    });
 
-  if (files.length <= KEEP_LAST) {
-    log("No old backups to delete");
-    return;
-  }
+    const allFiles = res.data.files || [];
+    // Filter for zip files locally to be safe
+    const files = allFiles.filter(f => f.name.toLowerCase().includes(".zip"));
+    
+    const KEEP_LAST = 3;
 
-  const filesToDelete = files.slice(KEEP_LAST);
-
-  for (const file of filesToDelete) {
-    try {
-      await drive.files.delete({ fileId: file.id });
-      log(`Deleted: ${file.name}`);
-    } catch (err) {
-      log(`Failed to delete: ${file.name} - ${err.message}`);
+    log(`Folder: "${folderName}" | Total files: ${allFiles.length} | Zip files: ${files.length}`);
+    
+    if (files.length > 0) {
+      log(`Files seen by app: ${files.map(f => f.name).join(", ")}`);
     }
+
+    if (files.length <= KEEP_LAST) {
+      log("No old backups to delete");
+      return;
+    }
+
+    const filesToDelete = files.slice(KEEP_LAST);
+    log(`Deleting ${filesToDelete.length} old backups...`);
+
+    for (const file of filesToDelete) {
+      try {
+        await drive.files.delete({ fileId: file.id });
+        log(`Deleted: ${file.name}`);
+      } catch (err) {
+        log(`Failed to delete: ${file.name} - ${err.message}`);
+      }
+    }
+  } catch (err) {
+    log(`Error in deleteOldBackups: ${err.message}`);
   }
 }
 
@@ -226,12 +248,17 @@ async function deleteOldBackups(folderId) {
 // HAS BACKUPS?
 // ----------------------------
 async function hasBackups(folderId) {
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents and mimeType='application/zip' and trashed=false`,
-    fields: "files(id)",
-    pageSize: 1
-  });
-  return (res.data.files || []).length > 0;
+  try {
+    const res = await drive.files.list({
+      q: `'${folderId}' in parents and name contains '.zip' and trashed=false`,
+      fields: "files(id)",
+      pageSize: 1
+    });
+    return (res.data.files || []).length > 0;
+  } catch (err) {
+    log(`Error checking backups: ${err.message}`);
+    return true; // Assume backups exist to avoid accidental force runs on error
+  }
 }
 
 // ----------------------------
@@ -277,7 +304,7 @@ function shouldRun(file) {
   const last = new Date(data.date);
   const now = new Date();
 
-  return (now - last) / (1000 * 60 * 60 * 24) >= 3;
+  return (now - last) / (1000 * 60 * 60 * 24) >= 1;
 }
 
 function markRun(file) {
