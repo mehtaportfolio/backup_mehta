@@ -212,6 +212,7 @@ button {
       transition: border-color 0.2s;
       /* Hide arrows */
       -moz-appearance: textfield;
+      -webkit-text-security: disc;
     }
 
     .pin-input::-webkit-outer-spin-button,
@@ -235,12 +236,12 @@ button {
 <div id="password-overlay">
   <h2>Enter 6-Digit PIN</h2>
   <div class="pin-container" id="pin-container">
-    <input type="password" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 0)">
-    <input type="password" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 1)">
-    <input type="password" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 2)">
-    <input type="password" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 3)">
-    <input type="password" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 4)">
-    <input type="password" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 5)">
+    <input type="text" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 0)">
+    <input type="text" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 1)">
+    <input type="text" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 2)">
+    <input type="text" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 3)">
+    <input type="text" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 4)">
+    <input type="text" inputmode="numeric" class="pin-input" maxlength="1" oninput="handlePin(this, 5)">
   </div>
   <p id="pin-error" style="color:#ef4444; margin-top:20px;"></p>
 </div>

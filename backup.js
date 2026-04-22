@@ -295,20 +295,41 @@ sendTelegram(`✅ ${project.name} backup done at ${time}`);
 }
 
 // ----------------------------
-// SCHEDULER HELPERS
+// SCHEDULER HELPERS (SUPABASE PERSISTENCE)
 // ----------------------------
-function shouldRun(file) {
-  if (!fs.existsSync(file)) return true;
+async function shouldRun(projectName) {
+  try {
+    const { data, error } = await supabase
+      .from("backup_state")
+      .select("last_run")
+      .eq("project_name", projectName)
+      .single();
 
-  const data = JSON.parse(fs.readFileSync(file));
-  const last = new Date(data.date);
-  const now = new Date();
+    if (error || !data) return true;
 
-  return (now - last) / (1000 * 60 * 60 * 24) >= 1;
+    const last = new Date(data.last_run);
+    const now = new Date();
+
+    return (now - last) / (1000 * 60 * 60 * 24) >= 1;
+  } catch (err) {
+    log(`Error in shouldRun for ${projectName}: ${err.message}`);
+    return true;
+  }
 }
 
-function markRun(file) {
-  fs.writeFileSync(file, JSON.stringify({ date: new Date() }));
+async function markRun(projectName) {
+  try {
+    const { error } = await supabase
+      .from("backup_state")
+      .upsert({ 
+        project_name: projectName, 
+        last_run: new Date().toISOString() 
+      }, { onConflict: "project_name" });
+
+    if (error) throw error;
+  } catch (err) {
+    log(`Error in markRun for ${projectName}: ${err.message}`);
+  }
 }
 
 function sendTelegram(message) {
@@ -337,12 +358,13 @@ async function checkAndRun() {
 for (const project of projects) {
   try {
     const exists = await hasBackups(project.driveFolder);
-    if (!exists || shouldRun(project.lastRunFile)) {
+    const runNeeded = await shouldRun(project.name);
+    if (!exists || runNeeded) {
       if (!exists) log(`No backup found for ${project.name} on Drive. Forcing backup.`);
       await runBackup(project);
-      markRun(project.lastRunFile);
+      await markRun(project.name);
     } else {
-      log(`Skip ${project.name} (not 3 days yet)`);
+      log(`Skip ${project.name} (not 1 day yet)`);
     }
   } catch (err) {
     log(`FAILED: ${project.name} - ${err.message}`);
@@ -380,10 +402,11 @@ app.get("/run-backup", authenticate, async (req, res) => {
     for (const project of projects) {
       try {
         const exists = await hasBackups(project.driveFolder);
-        if (!exists || shouldRun(project.lastRunFile)) {
+        const runNeeded = await shouldRun(project.name);
+        if (!exists || runNeeded) {
           if (!exists) log(`No backup found for ${project.name} on Drive. Forcing backup.`);
           await runBackup(project);
-          markRun(project.lastRunFile);
+          await markRun(project.name);
 
           results.push({
             project: project.name,
@@ -478,24 +501,29 @@ function getISTTime() {
   });
 }
 
-app.get("/projects", authenticate, (req, res) => {
-  const data = projects.map(p => {
+app.get("/projects", authenticate, async (req, res) => {
+  const data = await Promise.all(projects.map(async p => {
     let lastRun = "Never";
 
-    if (fs.existsSync(p.lastRunFile)) {
-      try {
-        const json = JSON.parse(fs.readFileSync(p.lastRunFile));
-        lastRun = new Date(json.date).toLocaleString("en-IN", {
+    try {
+      const { data: state } = await supabase
+        .from("backup_state")
+        .select("last_run")
+        .eq("project_name", p.name)
+        .single();
+      
+      if (state && state.last_run) {
+        lastRun = new Date(state.last_run).toLocaleString("en-IN", {
           timeZone: "Asia/Kolkata"
         });
-      } catch {}
-    }
+      }
+    } catch {}
 
     return {
       name: p.name,
       lastRun
     };
-  });
+  }));
 
   res.json({ projects: data });
 });
@@ -511,7 +539,7 @@ app.get("/run-project", authenticate, async (req, res) => {
 
   try {
     await runBackup(project);
-    markRun(project.lastRunFile);
+    await markRun(project.name);
 
     res.json({ status: `Backup done for ${name}` });
   } catch (e) {
