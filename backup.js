@@ -390,6 +390,13 @@ app.get("/health", authenticate, (req, res) => {
   });
 });
 
+app.get("/health-public", (req, res) => {
+  res.json({
+    status: "OK",
+    time: new Date().toISOString()
+  });
+});
+
 app.get("/run-backup", authenticate, async (req, res) => {
   if (running) {
     return res.status(429).json({ error: "Backup already running" });
